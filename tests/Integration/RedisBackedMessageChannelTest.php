@@ -24,6 +24,10 @@ use Test\Ecotone\Redis\Fixture\Support\Logger\LoggerExample;
 /**
  * @internal
  */
+/**
+ * licence Apache-2.0
+ * @internal
+ */
 final class RedisBackedMessageChannelTest extends AbstractConnectionTest
 {
     public function test_sending_and_receiving_message(): void
