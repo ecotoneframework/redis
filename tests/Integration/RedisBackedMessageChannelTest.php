@@ -28,7 +28,7 @@ use Test\Ecotone\Redis\Fixture\RedisConsumer\RedisAsyncConsumerExample;
  * licence Apache-2.0
  * @internal
  */
-final class RedisBackedMessageChannelTestCase extends ConnectionTestCase
+final class RedisBackedMessageChannelTest extends ConnectionTestCase
 {
     public function test_sending_and_receiving_message(): void
     {
