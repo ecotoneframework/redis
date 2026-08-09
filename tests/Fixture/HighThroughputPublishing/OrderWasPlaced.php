@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Test\Ecotone\Redis\Fixture\AsyncPublishing;
+namespace Test\Ecotone\Redis\Fixture\HighThroughputPublishing;
 
 /**
  * licence Apache-2.0

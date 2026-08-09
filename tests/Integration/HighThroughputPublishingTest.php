@@ -9,7 +9,7 @@ use Ecotone\Lite\Test\FlowTestSupport;
 use Ecotone\Messaging\Attribute\Asynchronous;
 use Ecotone\Messaging\Attribute\Parameter\Reference;
 use Ecotone\Messaging\BatchMessage;
-use Ecotone\Messaging\Channel\AsyncPublishing\PublishingFailedException;
+use Ecotone\Messaging\Channel\DeliveryConfirmation\PublishingFailedException;
 use Ecotone\Messaging\Config\ModulePackageList;
 use Ecotone\Messaging\Config\ServiceConfiguration;
 use Ecotone\Messaging\Endpoint\ExecutionPollingMetadata;
@@ -27,14 +27,14 @@ use Enqueue\Redis\RedisConnectionFactory;
 use Enqueue\Redis\RedisContext;
 use Symfony\Component\Uid\Uuid;
 use Test\Ecotone\Redis\ConnectionTestCase;
-use Test\Ecotone\Redis\Fixture\AsyncPublishing\OrderWasPlaced;
+use Test\Ecotone\Redis\Fixture\HighThroughputPublishing\OrderWasPlaced;
 use Throwable;
 
 /**
  * licence Apache-2.0
  * @internal
  */
-final class AsyncPublishingTest extends ConnectionTestCase
+final class HighThroughputPublishingTest extends ConnectionTestCase
 {
     public function setUp(): void
     {
@@ -44,7 +44,7 @@ final class AsyncPublishingTest extends ConnectionTestCase
         $context->getRedis()->del('asyncOrdersChannel:delayed');
     }
 
-    public function test_multiple_messages_published_asynchronously_from_command_handler_are_delivered(): void
+    public function test_multiple_messages_published_from_command_handler_are_delivered(): void
     {
         $orderService = $this->createOrderService();
         $messaging = $this->bootstrapEcotoneWithChannel($orderService, LicenceTesting::VALID_LICENCE);
@@ -61,7 +61,7 @@ final class AsyncPublishingTest extends ConnectionTestCase
         );
     }
 
-    public function test_async_publishing_requires_enterprise_licence(): void
+    public function test_high_throughput_publishing_requires_enterprise_licence(): void
     {
         $orderService = $this->createOrderService();
 
@@ -70,7 +70,7 @@ final class AsyncPublishingTest extends ConnectionTestCase
         $this->bootstrapEcotoneWithChannel($orderService, licenceKey: null);
     }
 
-    public function test_async_publishing_via_message_publisher_requires_enterprise_licence(): void
+    public function test_high_throughput_publishing_via_message_publisher_requires_enterprise_licence(): void
     {
         $this->expectException(LicensingException::class);
 
@@ -81,43 +81,35 @@ final class AsyncPublishingTest extends ConnectionTestCase
                 ->withSkippedModulePackageNames(ModulePackageList::allPackagesExcept([ModulePackageList::REDIS_PACKAGE]))
                 ->withExtensionObjects([
                     RedisMessagePublisherConfiguration::create(queueName: Uuid::v7()->toRfc4122())
-                        ->withAsyncPublishing(),
+                        ->withHighThroughputPublishing(),
                 ]),
         );
     }
 
-    public function test_async_publish_on_publisher_without_async_configuration_throws_before_publishing(): void
+    public function test_publish_deferred_is_not_available_as_confirmation_can_not_be_deferred(): void
     {
         $queueName = Uuid::v7()->toRfc4122();
-        $messaging = $this->bootstrapPublisher($queueName, asyncPublishing: false);
+        $messaging = $this->bootstrapPublisher($queueName, highThroughputPublishing: true);
         $publisher = $messaging->getGateway(MessagePublisher::class);
 
-        $publishFailed = false;
-        try {
-            $publisher->asyncPublish('order that must not be published');
-        } catch (PublishingFailedException) {
-            $publishFailed = true;
-        }
+        $this->expectException(PublishingFailedException::class);
+        $this->expectExceptionMessageMatches('/not configured for non blocking confirmation/');
 
-        $this->assertTrue($publishFailed);
-        $this->assertNull($messaging->getMessageChannel($queueName)->receive());
+        $publisher->publishDeferred('order that must not be published');
     }
 
-    public function test_message_publisher_async_publish_confirms_delivery_on_future_resolve(): void
+    public function test_message_publisher_delivers_single_and_batched_messages(): void
     {
         $queueName = Uuid::v7()->toRfc4122();
-        $messaging = $this->bootstrapPublisher($queueName, asyncPublishing: true);
+        $messaging = $this->bootstrapPublisher($queueName, highThroughputPublishing: true);
         $publisher = $messaging->getGateway(MessagePublisher::class);
 
-        $singleFuture = $publisher->asyncPublish('single order');
-        $batchFuture = $publisher->asyncPublish(
+        $publisher->send('single order');
+        $publisher->convertAndSend(
             BatchMessage::constructEmpty()
                 ->append('first order')
                 ->append('second order', ['priority' => '5'])
         );
-
-        $this->assertNull($singleFuture->resolve());
-        $this->assertNull($batchFuture->resolve());
 
         $receivedPayloads = [];
         while ($message = $messaging->getMessageChannel($queueName)->receive()) {
@@ -148,7 +140,7 @@ final class AsyncPublishingTest extends ConnectionTestCase
                 ->withSkippedModulePackageNames(ModulePackageList::allPackagesExcept([ModulePackageList::ASYNCHRONOUS_PACKAGE, ModulePackageList::REDIS_PACKAGE]))
                 ->withExtensionObjects([
                     RedisMessagePublisherConfiguration::create(queueName: $queueName)
-                        ->withAsyncPublishing(),
+                        ->withHighThroughputPublishing(),
                     RedisBackedMessageChannelBuilder::create($queueName),
                 ]),
             licenceKey: LicenceTesting::VALID_LICENCE,
@@ -167,14 +159,14 @@ final class AsyncPublishingTest extends ConnectionTestCase
     public function test_delayed_entry_of_published_batch_lands_in_delayed_set(): void
     {
         $queueName = Uuid::v7()->toRfc4122();
-        $messaging = $this->bootstrapPublisher($queueName, asyncPublishing: true);
+        $messaging = $this->bootstrapPublisher($queueName, highThroughputPublishing: true);
         $publisher = $messaging->getGateway(MessagePublisher::class);
 
-        $publisher->asyncPublish(
+        $publisher->convertAndSend(
             BatchMessage::constructEmpty()
                 ->append('immediate order')
                 ->append('delayed order', [MessageHeaders::DELIVERY_DELAY => 60000])
-        )->resolve();
+        );
 
         $receivedPayloads = [];
         while ($message = $messaging->getMessageChannel($queueName)->receive()) {
@@ -190,14 +182,14 @@ final class AsyncPublishingTest extends ConnectionTestCase
     public function test_expired_entry_of_published_batch_is_not_delivered(): void
     {
         $queueName = Uuid::v7()->toRfc4122();
-        $messaging = $this->bootstrapPublisher($queueName, asyncPublishing: true);
+        $messaging = $this->bootstrapPublisher($queueName, highThroughputPublishing: true);
         $publisher = $messaging->getGateway(MessagePublisher::class);
 
-        $publisher->asyncPublish(
+        $publisher->convertAndSend(
             BatchMessage::constructEmpty()
                 ->append('expiring order', [MessageHeaders::TIME_TO_LIVE => 1000])
                 ->append('kept order')
-        )->resolve();
+        );
 
         sleep(2);
 
@@ -209,7 +201,7 @@ final class AsyncPublishingTest extends ConnectionTestCase
     public function test_publishing_to_wrong_type_key_throws(): void
     {
         $queueName = Uuid::v7()->toRfc4122();
-        $messaging = $this->bootstrapPublisher($queueName, asyncPublishing: true);
+        $messaging = $this->bootstrapPublisher($queueName, highThroughputPublishing: true);
         /** @var RedisContext $context */
         $context = $this->getConnectionFactory()->createContext();
         $context->getRedis()->eval('redis.call("set", KEYS[1], "blocked") return 1', [$queueName]);
@@ -217,7 +209,7 @@ final class AsyncPublishingTest extends ConnectionTestCase
 
         $publishFailed = false;
         try {
-            $publisher->asyncPublish(
+            $publisher->convertAndSend(
                 BatchMessage::constructEmpty()
                     ->append('first order')
                     ->append('second order')
@@ -232,7 +224,7 @@ final class AsyncPublishingTest extends ConnectionTestCase
     public function test_partially_applied_mixed_batch_throws_while_immediate_entries_remain(): void
     {
         $queueName = Uuid::v7()->toRfc4122();
-        $messaging = $this->bootstrapPublisher($queueName, asyncPublishing: true);
+        $messaging = $this->bootstrapPublisher($queueName, highThroughputPublishing: true);
         /** @var RedisContext $context */
         $context = $this->getConnectionFactory()->createContext();
         $context->getRedis()->lpush($queueName . ':delayed', 'poison entry forcing wrong type on the delayed set');
@@ -240,7 +232,7 @@ final class AsyncPublishingTest extends ConnectionTestCase
 
         $publishFailed = false;
         try {
-            $publisher->asyncPublish(
+            $publisher->convertAndSend(
                 BatchMessage::constructEmpty()
                     ->append('immediate order')
                     ->append('delayed order', [MessageHeaders::DELIVERY_DELAY => 60000])
@@ -299,11 +291,11 @@ final class AsyncPublishingTest extends ConnectionTestCase
         );
     }
 
-    private function bootstrapPublisher(string $queueName, bool $asyncPublishing): FlowTestSupport
+    private function bootstrapPublisher(string $queueName, bool $highThroughputPublishing): FlowTestSupport
     {
         $publisherConfiguration = RedisMessagePublisherConfiguration::create(queueName: $queueName);
-        if ($asyncPublishing) {
-            $publisherConfiguration = $publisherConfiguration->withAsyncPublishing();
+        if ($highThroughputPublishing) {
+            $publisherConfiguration = $publisherConfiguration->withHighThroughputPublishing();
         }
 
         return EcotoneLite::bootstrapFlowTesting(

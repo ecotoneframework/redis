@@ -7,7 +7,7 @@ namespace Test\Ecotone\Redis\Integration;
 use Ecotone\Lite\EcotoneLite;
 use Ecotone\Lite\Test\FlowTestSupport;
 use Ecotone\Messaging\BatchMessage;
-use Ecotone\Messaging\Channel\AsyncPublishing\PublishingFailedException;
+use Ecotone\Messaging\Channel\DeliveryConfirmation\PublishingFailedException;
 use Ecotone\Messaging\Channel\PollableChannel\PollableChannelConfiguration;
 use Ecotone\Messaging\Config\ModulePackageList;
 use Ecotone\Messaging\Config\ServiceConfiguration;
@@ -25,7 +25,7 @@ use Throwable;
  * licence Apache-2.0
  * @internal
  */
-final class AsyncPublishingReliabilityTest extends ConnectionTestCase
+final class HighThroughputPublishingReliabilityTest extends ConnectionTestCase
 {
     private const CHANNEL_NAME = 'partiallyFailingChannel';
 
