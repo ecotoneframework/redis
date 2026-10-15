@@ -31,6 +31,7 @@
     "description": "Redis transport for Ecotone asynchronous messaging.",
     "autoload": {
         "psr-4": {
+            "Ecotone\\Api\\Redis\\": "Api/",
             "Ecotone\\Redis\\": "src"
         }
     },
@@ -42,11 +43,11 @@
         }
     },
     "require": {
-        "ecotone/enqueue": "~1.328.2",
+        "ecotone/enqueue": "~2.0.0-beta.2",
         "enqueue/redis": "^0.10.9"
     },
     "require-dev": {
-        "phpstan/phpstan": "^1.8|^2.0",
+        "phpstan/phpstan": "^2.1",
         "phpunit/phpunit": "^10.5|^11.0|^12.0",
         "predis/predis": "^1.1.10|^2.0"
     },
@@ -60,7 +61,7 @@
     },
     "extra": {
         "branch-alias": {
-            "dev-main": "1.328.x-dev"
+            "dev-main": "2.0.x-dev"
         },
         "ecotone": {
             "repository": "redis"
@@ -76,6 +77,6 @@
                 "description": "Allows to use Enterprise features of Ecotone. For more information please write to support@simplycodedsoftware.com"
             }
         },
-        "release-time": "2026-10-10 11:29:09"
+        "release-time": "2026-10-15 05:30:04"
     }
 }
