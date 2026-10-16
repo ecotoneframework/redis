@@ -6,7 +6,6 @@ namespace Test\Ecotone\Redis\Integration;
 
 use Ecotone\Api\ExtensionObject\ModulePackageList;
 use Ecotone\Api\ExtensionObject\RetryTemplateBuilder;
-use Ecotone\Api\ExtensionObject\ServiceConfiguration;
 use Ecotone\Api\Lite\EcotoneLite;
 use Ecotone\Api\Lite\Test\FlowTestSupport;
 use Ecotone\Api\Messaging\BatchMessage;
@@ -14,9 +13,10 @@ use Ecotone\Api\Messaging\MessageHeaders;
 use Ecotone\Api\Redis\RedisBackedMessageChannelBuilder;
 use Ecotone\Messaging\Channel\DeliveryConfirmation\PublishingFailedException;
 use Ecotone\Messaging\Channel\PollableChannel\PollableChannelConfiguration;
-use Ecotone\Messaging\Support\MessageBuilder;
 use Ecotone\Redis\Connection\RedisConnectionFactory;
+use Ecotone\Test\ChannelTestSupport;
 use Ecotone\Test\LicenceTesting;
+use Ecotone\Test\StaticMessageBuilder;
 use Enqueue\Redis\RedisContext;
 use Test\Ecotone\Redis\ConnectionTestCase;
 use Throwable;
@@ -40,11 +40,11 @@ final class HighThroughputPublishingReliabilityTest extends ConnectionTestCase
     {
         $this->makeDelayedStorageRejectWrites();
         $messaging = $this->bootstrapEcotoneWithRetryingChannel();
-        $channel = $messaging->getMessageChannel(self::CHANNEL_NAME);
+        $channel = ChannelTestSupport::of($messaging)->getMessageChannel(self::CHANNEL_NAME);
 
         $caughtException = null;
         try {
-            $channel->send(MessageBuilder::withPayload(
+            $channel->send(StaticMessageBuilder::withPayload(
                 BatchMessage::constructEmpty()
                     ->append('delivered order')
                     ->append('order for broken delayed storage', [MessageHeaders::DELIVERY_DELAY => 60000])
@@ -69,12 +69,12 @@ final class HighThroughputPublishingReliabilityTest extends ConnectionTestCase
         return EcotoneLite::bootstrapFlowTesting(
             [],
             [RedisConnectionFactory::class => $this->getConnectionFactory()],
-            (ServiceConfiguration::createWithDefaults()
-                ->withEnabledModulePackageNames([ModulePackageList::REDIS_PACKAGE, ])
-                ->withExtensionObjects([
-                    PollableChannelConfiguration::create(self::CHANNEL_NAME, RetryTemplateBuilder::fixedBackOff(1)->maxRetries(1)->build()),
-                ]))->addExtensionObject(RedisBackedMessageChannelBuilder::create(self::CHANNEL_NAME)->withHighThroughputPublishing()),
-            licenceKey: LicenceTesting::VALID_LICENCE
+            extensionObjects: [
+                PollableChannelConfiguration::create(self::CHANNEL_NAME, RetryTemplateBuilder::fixedBackOff(1)->maxRetries(1)->build()),
+                RedisBackedMessageChannelBuilder::create(self::CHANNEL_NAME)->withHighThroughputPublishing(),
+            ],
+            enabledModules: [ModulePackageList::REDIS_PACKAGE, ],
+            licenceKey: LicenceTesting::VALID_LICENCE,
         );
     }
 

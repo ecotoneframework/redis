@@ -13,8 +13,9 @@ use Ecotone\Api\Lite\EcotoneLite;
 use Ecotone\Api\Messaging\PollableChannel;
 use Ecotone\Api\Redis\RedisBackedMessageChannelBuilder;
 use Ecotone\Messaging\Endpoint\PollingConsumer\ConnectionException;
-use Ecotone\Messaging\Support\MessageBuilder;
 use Ecotone\Redis\Connection\RedisConnectionFactory;
+use Ecotone\Test\ChannelTestSupport;
+use Ecotone\Test\StaticMessageBuilder;
 use Ecotone\Test\StubLogger;
 use Enqueue\Redis\RedisDestination;
 use Symfony\Component\Uid\Uuid;
@@ -40,17 +41,14 @@ final class RedisBackedMessageChannelTest extends ConnectionTestCase
             containerOrAvailableServices: [
                 RedisConnectionFactory::class => $this->getConnectionFactory(),
             ],
-            configuration: ServiceConfiguration::createWithDefaults()
-                ->withEnabledModulePackageNames([ModulePackageList::REDIS_PACKAGE])
-                ->withExtensionObjects([
-                    RedisBackedMessageChannelBuilder::create($queueName),
-                ])
+            extensionObjects: [RedisBackedMessageChannelBuilder::create($queueName)],
+            enabledModules: [ModulePackageList::REDIS_PACKAGE],
         );
 
         /** @var PollableChannel $messageChannel */
-        $messageChannel = $ecotoneLite->getMessageChannelByName($queueName);
+        $messageChannel = ChannelTestSupport::of($ecotoneLite)->getMessageChannel($queueName);
 
-        $messageChannel->send(MessageBuilder::withPayload($messagePayload)->build());
+        $messageChannel->send(StaticMessageBuilder::withPayload($messagePayload)->build());
 
         $this->assertEquals(
             $messagePayload,
@@ -71,11 +69,8 @@ final class RedisBackedMessageChannelTest extends ConnectionTestCase
                 new RedisAsyncConsumerExample(),
                 RedisConnectionFactory::class => $this->getConnectionFactory(),
             ],
-            configuration: ServiceConfiguration::createWithDefaults()
-                ->withEnabledModulePackageNames([ModulePackageList::REDIS_PACKAGE, ])
-                ->withExtensionObjects([
-                    RedisBackedMessageChannelBuilder::create($queueName),
-                ])
+            extensionObjects: [RedisBackedMessageChannelBuilder::create($queueName)],
+            enabledModules: [ModulePackageList::REDIS_PACKAGE, ],
         );
 
         $this->getConnectionFactory()->createContext()->purgeQueue(new RedisDestination($queueName));
@@ -105,14 +100,11 @@ final class RedisBackedMessageChannelTest extends ConnectionTestCase
                 RedisConnectionFactory::class => new RedisConnectionFactory('redis://localhost:1000'),
                 'logger' => $loggerExample,
             ],
-            configuration: ServiceConfiguration::createWithDefaults()
-                ->withEnabledModulePackageNames([ModulePackageList::REDIS_PACKAGE, ])
-                ->withConnectionRetryTemplate(
-                    RetryTemplateBuilder::exponentialBackOff(1, 3)->maxRetries(3)
-                )
-                ->withExtensionObjects([
-                    RedisBackedMessageChannelBuilder::create('async'),
-                ])
+            extensionObjects: [
+                RedisBackedMessageChannelBuilder::create('async'),
+                ServiceConfiguration::createWithDefaults()->withConnectionRetryTemplate(RetryTemplateBuilder::exponentialBackOff(1, 3)->maxRetries(3)),
+            ],
+            enabledModules: [ModulePackageList::REDIS_PACKAGE, ],
         );
 
         $wasFinallyRethrown = false;

@@ -12,7 +12,6 @@ use Ecotone\Api\Attribute\Reference;
 use Ecotone\Api\ExtensionObject\ExecutionPollingMetadata;
 use Ecotone\Api\ExtensionObject\ModulePackageList;
 use Ecotone\Api\ExtensionObject\PollingMetadata;
-use Ecotone\Api\ExtensionObject\ServiceConfiguration;
 use Ecotone\Api\Gateway\EventBus;
 use Ecotone\Api\Gateway\MessagePublisher;
 use Ecotone\Api\Lite\EcotoneLite;
@@ -26,6 +25,7 @@ use Ecotone\Api\Redis\RedisMessagePublisherConfiguration;
 use Ecotone\Messaging\Channel\DeliveryConfirmation\PublishingFailedException;
 use Ecotone\Messaging\Support\LicensingException;
 use Ecotone\Redis\Connection\RedisConnectionFactory;
+use Ecotone\Test\ChannelTestSupport;
 use Ecotone\Test\LicenceTesting;
 use Enqueue\Redis\RedisContext;
 use Symfony\Component\Uid\Uuid;
@@ -80,12 +80,8 @@ final class HighThroughputPublishingTest extends ConnectionTestCase
         EcotoneLite::bootstrapFlowTesting(
             [],
             [RedisConnectionFactory::class => $this->getConnectionFactory()],
-            ServiceConfiguration::createWithDefaults()
-                ->withEnabledModulePackageNames([ModulePackageList::REDIS_PACKAGE])
-                ->withExtensionObjects([
-                    RedisMessagePublisherConfiguration::create(queueName: Uuid::v7()->toRfc4122())
-                        ->withHighThroughputPublishing(),
-                ]),
+            extensionObjects: [RedisMessagePublisherConfiguration::create(queueName:Uuid::v7()->toRfc4122())->withHighThroughputPublishing()],
+            enabledModules: [ModulePackageList::REDIS_PACKAGE],
         );
     }
 
@@ -115,7 +111,7 @@ final class HighThroughputPublishingTest extends ConnectionTestCase
         );
 
         $receivedPayloads = [];
-        while ($message = $this->receiveWithinOneSecond($messaging->getMessageChannel($queueName))) {
+        while ($message = $this->receiveWithinOneSecond(ChannelTestSupport::of($messaging)->getMessageChannel($queueName))) {
             $receivedPayloads[] = $message->getPayload();
         }
         sort($receivedPayloads);
@@ -139,20 +135,18 @@ final class HighThroughputPublishingTest extends ConnectionTestCase
         $messaging = EcotoneLite::bootstrapFlowTesting(
             [$commandHandler::class],
             [RedisConnectionFactory::class => $this->getConnectionFactory(), $commandHandler],
-            ServiceConfiguration::createWithDefaults()
-                ->withEnabledModulePackageNames([ModulePackageList::REDIS_PACKAGE])
-                ->withExtensionObjects([
-                    RedisMessagePublisherConfiguration::create(queueName: $queueName)
-                        ->withHighThroughputPublishing(),
-                    RedisBackedMessageChannelBuilder::create($queueName),
-                ]),
+            extensionObjects: [
+                RedisMessagePublisherConfiguration::create(queueName:$queueName)->withHighThroughputPublishing(),
+                RedisBackedMessageChannelBuilder::create($queueName),
+            ],
+            enabledModules: [ModulePackageList::REDIS_PACKAGE],
             licenceKey: LicenceTesting::VALID_LICENCE,
         );
 
         $messaging->sendCommandWithRouting('order.placeBatch', 'espresso');
 
         $receivedPayloads = [];
-        while ($message = $this->receiveWithinOneSecond($messaging->getMessageChannel($queueName))) {
+        while ($message = $this->receiveWithinOneSecond(ChannelTestSupport::of($messaging)->getMessageChannel($queueName))) {
             $receivedPayloads[] = $message->getPayload();
         }
         sort($receivedPayloads);
@@ -172,7 +166,7 @@ final class HighThroughputPublishingTest extends ConnectionTestCase
         );
 
         $receivedPayloads = [];
-        while ($message = $this->receiveWithinOneSecond($messaging->getMessageChannel($queueName))) {
+        while ($message = $this->receiveWithinOneSecond(ChannelTestSupport::of($messaging)->getMessageChannel($queueName))) {
             $receivedPayloads[] = $message->getPayload();
         }
         $this->assertSame(['immediate order'], $receivedPayloads);
@@ -196,7 +190,7 @@ final class HighThroughputPublishingTest extends ConnectionTestCase
 
         sleep(2);
 
-        $channel = $messaging->getMessageChannel($queueName);
+        $channel = ChannelTestSupport::of($messaging)->getMessageChannel($queueName);
         $this->assertSame('kept order', $channel->receive()->getPayload());
         $this->assertNull($this->receiveWithinOneSecond($channel));
     }
@@ -247,7 +241,7 @@ final class HighThroughputPublishingTest extends ConnectionTestCase
         $this->assertTrue($publishFailed);
 
         $context->getRedis()->del($queueName . ':delayed');
-        $this->assertSame('immediate order', $messaging->getMessageChannel($queueName)->receive()->getPayload());
+        $this->assertSame('immediate order', ChannelTestSupport::of($messaging)->getMessageChannel($queueName)->receive()->getPayload());
     }
 
     private function createOrderService(): object
@@ -284,12 +278,8 @@ final class HighThroughputPublishingTest extends ConnectionTestCase
         return EcotoneLite::bootstrapFlowTesting(
             [$orderService::class],
             [RedisConnectionFactory::class => $this->getConnectionFactory(), $orderService],
-            ServiceConfiguration::createWithDefaults()
-                ->withEnabledModulePackageNames([ModulePackageList::REDIS_PACKAGE])
-                ->withExtensionObjects([
-                    RedisBackedMessageChannelBuilder::create('asyncOrdersChannel')
-                        ->withHighThroughputPublishing(),
-                ]),
+            extensionObjects: [RedisBackedMessageChannelBuilder::create('asyncOrdersChannel')->withHighThroughputPublishing()],
+            enabledModules: [ModulePackageList::REDIS_PACKAGE],
             licenceKey: $licenceKey,
         );
     }
@@ -304,12 +294,11 @@ final class HighThroughputPublishingTest extends ConnectionTestCase
         return EcotoneLite::bootstrapFlowTesting(
             [],
             [RedisConnectionFactory::class => $this->getConnectionFactory()],
-            ServiceConfiguration::createWithDefaults()
-                ->withEnabledModulePackageNames([ModulePackageList::REDIS_PACKAGE])
-                ->withExtensionObjects([
-                    $publisherConfiguration,
-                    RedisBackedMessageChannelBuilder::create($queueName),
-                ]),
+            extensionObjects: [
+                $publisherConfiguration,
+                RedisBackedMessageChannelBuilder::create($queueName),
+            ],
+            enabledModules: [ModulePackageList::REDIS_PACKAGE],
             licenceKey: LicenceTesting::VALID_LICENCE,
         );
     }
