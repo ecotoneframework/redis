@@ -2,9 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Ecotone\Api\Redis;
+namespace Ecotone\Redis\Configuration;
 
-use Ecotone\Api\Gateway\MessagePublisher;
+use Ecotone\Messaging\MessagePublisher;
+use Enqueue\Redis\RedisConnectionFactory;
 
 /**
  * licence Apache-2.0
@@ -19,7 +20,7 @@ final class RedisMessagePublisherConfiguration
     {
     }
 
-    public static function create(string $publisherReferenceName = MessagePublisher::class, string $queueName = '', ?string $outputDefaultConversionMediaType = null, string $connectionReference = RedisConnectionReference::DEFAULT): self
+    public static function create(string $publisherReferenceName = MessagePublisher::class, string $queueName = '', ?string $outputDefaultConversionMediaType = null, string $connectionReference = RedisConnectionFactory::class): self
     {
         return new self($connectionReference, $queueName, $outputDefaultConversionMediaType, $publisherReferenceName);
     }
@@ -73,7 +74,8 @@ final class RedisMessagePublisherConfiguration
     }
 
     /**
-     * @link https://docs.ecotone.tech/modelling/microservices-php/message-publisher#high-throughput-publishing-enterprise
+     * Coalesces published Messages into a single scripted round trip.
+     * Non blocking confirmation is not offered here, as the round trip blocks until Redis confirms it.
      */
     public function withHighThroughputPublishing(): self
     {

@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace Test\Ecotone\Redis\Integration;
 
-use Ecotone\Api\ExtensionObject\ExecutionPollingMetadata;
-use Ecotone\Api\ExtensionObject\ModulePackageList;
-use Ecotone\Api\Lite\EcotoneLite;
-use Ecotone\Api\Redis\RedisConnectionFactory;
-use Ecotone\Api\Redis\RedisMessagePublisherConfiguration;
+use Ecotone\Lite\EcotoneLite;
+use Ecotone\Messaging\Config\ModulePackageList;
+use Ecotone\Messaging\Config\ServiceConfiguration;
+use Ecotone\Messaging\Endpoint\ExecutionPollingMetadata;
 use Ecotone\Redis\Configuration\RedisMessageConsumerConfiguration;
+use Ecotone\Redis\Configuration\RedisMessagePublisherConfiguration;
+use Enqueue\Redis\RedisConnectionFactory;
 use Symfony\Component\Uid\Uuid;
 use Test\Ecotone\Redis\ConnectionTestCase;
 use Test\Ecotone\Redis\Fixture\RedisConsumer\RedisConsumerExample;
@@ -27,17 +28,18 @@ final class ConsumerAndPublisherTest extends ConnectionTestCase
     {
         $endpointId = 'redis_consumer';
         $queueName = Uuid::v7()->toRfc4122();
-        $ecotoneLite = EcotoneLite::bootstrapFlowTesting(
+        $ecotoneLite = EcotoneLite::bootstrapForTesting(
             [RedisConsumerExample::class],
             [
                 new RedisConsumerExample(),
                 RedisConnectionFactory::class => $this->getConnectionFactory(),
             ],
-            extensionObjects: [
-                RedisMessageConsumerConfiguration::create($endpointId, $queueName),
-                RedisMessagePublisherConfiguration::create(queueName:$queueName),
-            ],
-            enabledModules: [ModulePackageList::REDIS_PACKAGE],
+            ServiceConfiguration::createWithDefaults()
+                ->withSkippedModulePackageNames(ModulePackageList::allPackagesExcept([ModulePackageList::REDIS_PACKAGE]))
+                ->withExtensionObjects([
+                    RedisMessageConsumerConfiguration::create($endpointId, $queueName),
+                    RedisMessagePublisherConfiguration::create(queueName: $queueName),
+                ])
         );
 
         $payload = Uuid::v7()->toRfc4122();

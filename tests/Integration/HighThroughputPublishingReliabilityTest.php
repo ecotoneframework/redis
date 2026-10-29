@@ -4,19 +4,19 @@ declare(strict_types=1);
 
 namespace Test\Ecotone\Redis\Integration;
 
-use Ecotone\Api\ExtensionObject\ModulePackageList;
-use Ecotone\Api\ExtensionObject\RetryTemplateBuilder;
-use Ecotone\Api\Lite\EcotoneLite;
-use Ecotone\Api\Lite\Test\FlowTestSupport;
-use Ecotone\Api\Messaging\BatchMessage;
-use Ecotone\Api\Messaging\MessageHeaders;
-use Ecotone\Api\Redis\RedisBackedMessageChannelBuilder;
-use Ecotone\Api\Redis\RedisConnectionFactory;
+use Ecotone\Lite\EcotoneLite;
+use Ecotone\Lite\Test\FlowTestSupport;
+use Ecotone\Messaging\BatchMessage;
 use Ecotone\Messaging\Channel\DeliveryConfirmation\PublishingFailedException;
 use Ecotone\Messaging\Channel\PollableChannel\PollableChannelConfiguration;
-use Ecotone\Test\ChannelTestSupport;
+use Ecotone\Messaging\Config\ModulePackageList;
+use Ecotone\Messaging\Config\ServiceConfiguration;
+use Ecotone\Messaging\Handler\Recoverability\RetryTemplateBuilder;
+use Ecotone\Messaging\MessageHeaders;
+use Ecotone\Messaging\Support\MessageBuilder;
+use Ecotone\Redis\RedisBackedMessageChannelBuilder;
 use Ecotone\Test\LicenceTesting;
-use Ecotone\Test\StaticMessageBuilder;
+use Enqueue\Redis\RedisConnectionFactory;
 use Enqueue\Redis\RedisContext;
 use Test\Ecotone\Redis\ConnectionTestCase;
 use Throwable;
@@ -40,11 +40,11 @@ final class HighThroughputPublishingReliabilityTest extends ConnectionTestCase
     {
         $this->makeDelayedStorageRejectWrites();
         $messaging = $this->bootstrapEcotoneWithRetryingChannel();
-        $channel = ChannelTestSupport::of($messaging)->getMessageChannel(self::CHANNEL_NAME);
+        $channel = $messaging->getMessageChannel(self::CHANNEL_NAME);
 
         $caughtException = null;
         try {
-            $channel->send(StaticMessageBuilder::withPayload(
+            $channel->send(MessageBuilder::withPayload(
                 BatchMessage::constructEmpty()
                     ->append('delivered order')
                     ->append('order for broken delayed storage', [MessageHeaders::DELIVERY_DELAY => 60000])
@@ -69,11 +69,14 @@ final class HighThroughputPublishingReliabilityTest extends ConnectionTestCase
         return EcotoneLite::bootstrapFlowTesting(
             [],
             [RedisConnectionFactory::class => $this->getConnectionFactory()],
-            extensionObjects: [
-                PollableChannelConfiguration::create(self::CHANNEL_NAME, RetryTemplateBuilder::fixedBackOff(1)->maxRetries(1)->build()),
+            ServiceConfiguration::createWithDefaults()
+                ->withSkippedModulePackageNames(ModulePackageList::allPackagesExcept([ModulePackageList::REDIS_PACKAGE, ModulePackageList::ASYNCHRONOUS_PACKAGE]))
+                ->withExtensionObjects([
+                    PollableChannelConfiguration::create(self::CHANNEL_NAME, RetryTemplateBuilder::fixedBackOff(1)->maxRetryAttempts(1)->build()),
+                ]),
+            enableAsynchronousProcessing: [
                 RedisBackedMessageChannelBuilder::create(self::CHANNEL_NAME)->withHighThroughputPublishing(),
             ],
-            enabledModules: [ModulePackageList::REDIS_PACKAGE, ],
             licenceKey: LicenceTesting::VALID_LICENCE,
         );
     }
